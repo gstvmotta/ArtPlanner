@@ -7,6 +7,7 @@ import { useWallStore } from '../store/useWallStore';
 import { Frame3D } from './Frame3D';
 import { getMaterialTexture } from '../utils/proceduralTextures';
 import { computeAlignment, type DistanceLabel, type FrameBounds, type Guide } from '../utils/alignment';
+import { canvasCaptureRef } from '../utils/canvasCapture';
 
 const CM_TO_M = 1 / 100;
 const MIN_ZOOM = 0.35;
@@ -151,6 +152,7 @@ function Scene({ zoom, panX, panY }: { zoom: number; panX: number; panY: number 
   }
 
   function handleFrameDragStart(frameId: string, event: ThreeEvent<PointerEvent>) {
+    if (event.nativeEvent.button !== 0) return;
     event.stopPropagation();
     const frame = frames.find((f) => f.id === frameId);
     if (!frame) return;
@@ -258,7 +260,7 @@ function Scene({ zoom, panX, panY }: { zoom: number; panX: number; panY: number 
       <mesh
         receiveShadow
         position={[0, 0, 0]}
-        onPointerDown={() => selectFrame(null)}
+        onPointerDown={(e) => e.nativeEvent.button === 0 && selectFrame(null)}
       >
         <planeGeometry args={[wallWM, wallHM]} />
         <meshStandardMaterial
@@ -342,7 +344,17 @@ export function Wall3D() {
       setZoom((z) => clampZoom(z * (1 + e.deltaY * 0.0012)));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+
+    // stop the browser's native middle-click autoscroll gesture from engaging
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault();
+    };
+    el.addEventListener('mousedown', onMouseDown);
+
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('mousedown', onMouseDown);
+    };
   }, []);
 
   useEffect(() => {
@@ -369,15 +381,35 @@ export function Wall3D() {
     };
   }, []);
 
-  function handlePanPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+  function startPan(clientX: number, clientY: number) {
     panDragRef.current = {
-      startClientX: e.clientX,
-      startClientY: e.clientY,
+      startClientX: clientX,
+      startClientY: clientY,
       startPanX: pan.x,
       startPanY: pan.y,
     };
     setIsPanning(true);
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+  }
+
+  function handlePanPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    startPan(e.clientX, e.clientY);
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore: capture is a nicety, not required for the drag to work
+    }
+  }
+
+  function handleContainerPointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    startPan(e.clientX, e.clientY);
+    try {
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore: capture is a nicety, not required for the drag to work
+    }
   }
 
   function handlePanPointerMove(e: ReactPointerEvent<HTMLDivElement>) {
@@ -403,11 +435,27 @@ export function Wall3D() {
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      ref={containerRef}
+      onPointerDown={handleContainerPointerDown}
+      onPointerMove={handlePanPointerMove}
+      onPointerUp={handlePanPointerUp}
+      onPointerLeave={handlePanPointerUp}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        cursor: isPanning ? 'grabbing' : undefined,
+      }}
+    >
       <Canvas
         shadows
         camera={{ position: [0, 0, 5], fov: FOV_DEG }}
         style={{ width: '100%', height: '100%' }}
+        gl={{ preserveDrawingBuffer: true }}
+        onCreated={(state) => {
+          canvasCaptureRef.current = state.gl.domElement;
+        }}
       >
         <Scene zoom={zoom} panX={pan.x} panY={pan.y} />
       </Canvas>

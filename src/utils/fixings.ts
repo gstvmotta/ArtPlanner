@@ -13,11 +13,11 @@ function rectPositions(widthCm: number, heightCm: number, count: number): Point[
 
   switch (count) {
     case 1:
-      return [{ x: 0, y: centerY }];
+      return [{ x: 0, y: top }];
     case 2:
       return [
-        { x: left, y: centerY },
-        { x: right, y: centerY },
+        { x: left, y: top },
+        { x: right, y: top },
       ];
     case 4:
       return [

@@ -26,9 +26,9 @@ const materialRoughness: Record<string, { roughness: number; metalness: number }
 };
 
 const glassParams: Record<string, { roughness: number; transmission: number } | null> = {
-  clear: { roughness: 0.015, transmission: 0.93 },
-  antiglare: { roughness: 0.06, transmission: 0.9 },
-  matte: { roughness: 0.4, transmission: 0.65 },
+  clear: { roughness: 0.015, transmission: 0.99 },
+  antiglare: { roughness: 0.06, transmission: 0.96 },
+  matte: { roughness: 0.4, transmission: 0.75 },
   none: null,
 };
 
@@ -276,11 +276,11 @@ export function Frame3D({
               transmission={glass.transmission}
               thickness={0.01}
               ior={1.52}
-              reflectivity={0.2}
-              envMapIntensity={0.85}
-              clearcoat={0.3}
+              reflectivity={0.12}
+              envMapIntensity={0.35}
+              clearcoat={0.15}
               clearcoatRoughness={glass.roughness}
-              specularIntensity={0.35}
+              specularIntensity={0.2}
               transparent
             />
           </mesh>
@@ -288,7 +288,7 @@ export function Frame3D({
               spills past the glass pane's own bounds */}
           <mesh position={[0, 0, depth * 0.97]}>
             <planeGeometry args={[innerW, innerH]} />
-            <meshBasicMaterial map={shineTex} color="#ffffff" transparent opacity={0.16} depthWrite={false} />
+            <meshBasicMaterial map={shineTex} color="#ffffff" transparent opacity={0.22} depthWrite={false} />
           </mesh>
         </>
       )}

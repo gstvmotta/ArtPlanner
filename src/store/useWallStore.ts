@@ -271,6 +271,17 @@ export const useWallStore = create<WallStore>()(
       name: 'wall-frame-planner-storage',
       storage: createJSONStorage(() => indexedDbStorage),
       partialize: (state) => ({ wall: state.wall, grid: state.grid, frames: state.frames }),
+      // frames persisted before a fixings-formula change carry stale, cached
+      // `fixings` data (it's computed once and stored, not derived at
+      // render time) — recompute it for every frame on load so fixes to
+      // calculateFixings apply retroactively.
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        state.frames = state.frames.map((f) => ({
+          ...f,
+          fixings: calculateFixings(f.widthCm, f.heightCm, f.xCm, f.yCm),
+        }));
+      },
     },
   ),
 );
