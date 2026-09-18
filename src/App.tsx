@@ -10,7 +10,10 @@ function App() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [wallPanelOpen, setWallPanelOpen] = useState(true);
   const selectedFrameId = useWallStore((s) => s.selectedFrameId);
+  const frames = useWallStore((s) => s.frames);
   const addFrame = useWallStore((s) => s.addFrame);
+  const moveFrame = useWallStore((s) => s.moveFrame);
+  const beginHistoryEntry = useWallStore((s) => s.beginHistoryEntry);
   const undo = useWallStore((s) => s.undo);
   const redo = useWallStore((s) => s.redo);
   const canUndo = useWallStore((s) => s.undoStack.length > 0);
@@ -18,21 +21,40 @@ function App() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      const isMod = e.ctrlKey || e.metaKey;
-      if (!isMod) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-      if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      } else if (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey)) {
-        e.preventDefault();
-        redo();
+
+      const isMod = e.ctrlKey || e.metaKey;
+      if (isMod) {
+        if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+        } else if (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          redo();
+        }
+        return;
       }
+
+      if (!selectedFrameId) return;
+      const step = e.shiftKey ? 10 : 1;
+      let dx = 0;
+      let dy = 0;
+      if (e.key === 'ArrowUp') dy = -step;
+      else if (e.key === 'ArrowDown') dy = step;
+      else if (e.key === 'ArrowLeft') dx = -step;
+      else if (e.key === 'ArrowRight') dx = step;
+      else return;
+
+      e.preventDefault();
+      const frame = frames.find((f) => f.id === selectedFrameId);
+      if (!frame) return;
+      if (!e.repeat) beginHistoryEntry();
+      moveFrame(selectedFrameId, frame.xCm + dx, frame.yCm + dy, true);
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, selectedFrameId, frames, moveFrame, beginHistoryEntry]);
 
   return (
     <div className="app-layout">

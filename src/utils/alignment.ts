@@ -28,8 +28,75 @@ export interface AlignmentResult {
   labels: DistanceLabel[];
 }
 
-const SNAP_THRESHOLD_CM = 3;
+const SNAP_THRESHOLD_CM = 0.5;
 const MAX_LABEL_GAP_CM = 250;
+
+interface Candidate {
+  value: number;
+  diff: number;
+  guide: Guide;
+}
+
+function considerCandidate(
+  best: Candidate | null,
+  mVal: number,
+  oVal: number,
+  movingCenter: number,
+  axis: 'v' | 'h',
+  from: number,
+  to: number,
+): Candidate | null {
+  const diff = Math.abs(mVal - oVal);
+  if (diff >= SNAP_THRESHOLD_CM) return best;
+  if (best && diff >= best.diff) return best;
+  return {
+    value: movingCenter + (oVal - mVal),
+    diff,
+    guide: { axis, pos: oVal, from, to },
+  };
+}
+
+function findBestX(
+  moving: FrameBounds,
+  others: FrameBounds[],
+  wallWidthCm: number,
+  wallHeightCm: number,
+): Candidate | null {
+  let best: Candidate | null = null;
+  for (const other of others) {
+    const from = Math.min(moving.top, other.top) - 20;
+    const to = Math.max(moving.bottom, other.bottom) + 20;
+    best = considerCandidate(best, moving.left, other.left, moving.centerX, 'v', from, to);
+    best = considerCandidate(best, moving.left, other.right, moving.centerX, 'v', from, to);
+    best = considerCandidate(best, moving.centerX, other.centerX, moving.centerX, 'v', from, to);
+    best = considerCandidate(best, moving.right, other.left, moving.centerX, 'v', from, to);
+    best = considerCandidate(best, moving.right, other.right, moving.centerX, 'v', from, to);
+  }
+  const wallCenterX = wallWidthCm / 2;
+  best = considerCandidate(best, moving.centerX, wallCenterX, moving.centerX, 'v', 0, wallHeightCm);
+  return best;
+}
+
+function findBestY(
+  moving: FrameBounds,
+  others: FrameBounds[],
+  wallWidthCm: number,
+  wallHeightCm: number,
+): Candidate | null {
+  let best: Candidate | null = null;
+  for (const other of others) {
+    const from = Math.min(moving.left, other.left) - 20;
+    const to = Math.max(moving.right, other.right) + 20;
+    best = considerCandidate(best, moving.top, other.top, moving.centerY, 'h', from, to);
+    best = considerCandidate(best, moving.top, other.bottom, moving.centerY, 'h', from, to);
+    best = considerCandidate(best, moving.centerY, other.centerY, moving.centerY, 'h', from, to);
+    best = considerCandidate(best, moving.bottom, other.top, moving.centerY, 'h', from, to);
+    best = considerCandidate(best, moving.bottom, other.bottom, moving.centerY, 'h', from, to);
+  }
+  const wallCenterY = wallHeightCm / 2;
+  best = considerCandidate(best, moving.centerY, wallCenterY, moving.centerY, 'h', 0, wallWidthCm);
+  return best;
+}
 
 function rangesOverlap(aFrom: number, aTo: number, bFrom: number, bTo: number): boolean {
   return aFrom < bTo && bFrom < aTo;
@@ -44,83 +111,24 @@ export function computeAlignment(
   const halfW = (moving.right - moving.left) / 2;
   const halfH = (moving.bottom - moving.top) / 2;
 
-  let bestXDiff = SNAP_THRESHOLD_CM;
-  let snappedCenterX: number | null = null;
-  let bestYDiff = SNAP_THRESHOLD_CM;
-  let snappedCenterY: number | null = null;
+  const bestX = findBestX(moving, others, wallWidthCm, wallHeightCm);
+  const bestY = findBestY(moving, others, wallWidthCm, wallHeightCm);
+
+  const finalCenterX = bestX?.value ?? moving.centerX;
+  const finalCenterY = bestY?.value ?? moving.centerY;
+
   const guides: Guide[] = [];
-
-  for (const other of others) {
-    const xChecks: [number, number][] = [
-      [moving.left, other.left],
-      [moving.left, other.right],
-      [moving.centerX, other.centerX],
-      [moving.right, other.left],
-      [moving.right, other.right],
-    ];
-    for (const [mVal, oVal] of xChecks) {
-      const diff = Math.abs(mVal - oVal);
-      if (diff < SNAP_THRESHOLD_CM) {
-        const candidateCenterX = moving.centerX + (oVal - mVal);
-        guides.push({
-          axis: 'v',
-          pos: oVal,
-          from: Math.min(moving.top, other.top) - 20,
-          to: Math.max(moving.bottom, other.bottom) + 20,
-        });
-        if (diff < bestXDiff) {
-          bestXDiff = diff;
-          snappedCenterX = candidateCenterX;
-        }
-      }
-    }
-
-    const yChecks: [number, number][] = [
-      [moving.top, other.top],
-      [moving.top, other.bottom],
-      [moving.centerY, other.centerY],
-      [moving.bottom, other.top],
-      [moving.bottom, other.bottom],
-    ];
-    for (const [mVal, oVal] of yChecks) {
-      const diff = Math.abs(mVal - oVal);
-      if (diff < SNAP_THRESHOLD_CM) {
-        const candidateCenterY = moving.centerY + (oVal - mVal);
-        guides.push({
-          axis: 'h',
-          pos: oVal,
-          from: Math.min(moving.left, other.left) - 20,
-          to: Math.max(moving.right, other.right) + 20,
-        });
-        if (diff < bestYDiff) {
-          bestYDiff = diff;
-          snappedCenterY = candidateCenterY;
-        }
-      }
-    }
-  }
-
-  // also align to wall center
-  const wallCenterX = wallWidthCm / 2;
-  const wallCenterY = wallHeightCm / 2;
-  if (Math.abs(moving.centerX - wallCenterX) < SNAP_THRESHOLD_CM) {
-    snappedCenterX = wallCenterX;
-    guides.push({ axis: 'v', pos: wallCenterX, from: 0, to: wallHeightCm });
-  }
-  if (Math.abs(moving.centerY - wallCenterY) < SNAP_THRESHOLD_CM) {
-    snappedCenterY = wallCenterY;
-    guides.push({ axis: 'h', pos: wallCenterY, from: 0, to: wallWidthCm });
-  }
-
-  const finalCenterX = snappedCenterX ?? moving.centerX;
-  const finalCenterY = snappedCenterY ?? moving.centerY;
+  if (bestX) guides.push(bestX.guide);
+  if (bestY) guides.push(bestY.guide);
 
   const finalLeft = finalCenterX - halfW;
   const finalRight = finalCenterX + halfW;
   const finalTop = finalCenterY - halfH;
   const finalBottom = finalCenterY + halfH;
 
-  // nearest-neighbour distance labels (gap between facing edges)
+  // nearest-neighbour distance labels (gap between facing edges), computed
+  // against the *final* (post-snap) position so the label always matches
+  // where the frame actually is
   const labels: DistanceLabel[] = [];
   let bestHGap: { gap: number; label: DistanceLabel } | null = null;
   let bestVGap: { gap: number; label: DistanceLabel } | null = null;
